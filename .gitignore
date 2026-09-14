@@ -1,0 +1,37 @@
+# Environment / credentials
+.env
+.env.*
+!.env.example
+
+# XAMPP / local configuration
+config.local.php
+database/config.php
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Upload/cache
+/uploads/*
+/cache/*
+/tmp/*
+
+# Backup
+*.bak
+*.old
+*.zip
