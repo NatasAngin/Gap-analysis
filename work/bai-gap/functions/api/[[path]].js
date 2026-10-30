@@ -94,10 +94,11 @@ export async function onRequest({ request, env }) {
     return reply({message:"Logout berhasil."},200,{"set-cookie":setCookie("",0)});
   }
 
-  const user = await getUser(request,env);
+  // Public internal workspace mode: no login/session is required.
+  // Writes are available to workspace users; user administration and audit endpoints remain restricted.
+  const user = { id: "public-workspace", username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
   if (path === "/api/auth/me" && method === "GET")
-    return user ? reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}}) : reply({error:"Sesi tidak ditemukan."},401);
-  if (!user) return reply({error:"Silakan login terlebih dahulu."},401);
+    return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
 
   if (path === "/api/gaps" && method === "GET") {
     const {results} = await env.GAP_ANALYSIS_DB.prepare("SELECT id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
