@@ -122,8 +122,14 @@ async function handleRequest({ request, env }) {
   const workspaceId = "public-workspace";
   await env.GAP_ANALYSIS_DB.prepare(
     "INSERT OR IGNORE INTO users (id,username,display_name,password_hash,password_salt,role,active) VALUES (?,?,?,?,?,'Assessor',1)"
-  ).bind(workspaceId, "workspace", "Workspace", randomToken(), randomToken()).run();
-  const user = { id: workspaceId, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
+  ).bind(workspaceId, "bai-public-workspace", "Workspace", randomToken(), randomToken()).run();
+  // Resolve the actual row after INSERT OR IGNORE: a pre-existing unique username
+  // must never leave created_by pointing at a non-existent user ID.
+  const workspaceRow = await env.GAP_ANALYSIS_DB.prepare(
+    "SELECT id FROM users WHERE id=? OR username=? COLLATE NOCASE LIMIT 1"
+  ).bind(workspaceId, "bai-public-workspace").first();
+  if (!workspaceRow) throw new Error("Public workspace user could not be initialized in D1.");
+  const user = { id: workspaceRow.id, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
   if (path === "/api/auth/me" && method === "GET")
     return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
 
