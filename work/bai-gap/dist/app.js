@@ -3,7 +3,13 @@ let user=null,rows=[],editing=null,page='Dashboard';
 const domains=['Jaringan','Server & Virtualisasi','Keamanan','Backup & Recovery','Data Center','Monitoring'];
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const admin=()=>user&&user.role==='Admin',writer=()=>user&&['Admin','Assessor'].includes(user.role);
-async function api(p,o){const r=await fetch('/api'+p,Object.assign({credentials:'same-origin',headers:{'content-type':'application/json'}},o||{}));const d=await r.json().catch(()=>({error:'Respons server tidak valid'}));if(!r.ok)throw Error(d.error||'Permintaan gagal');return d}
+async function api(p,o){
+ const r=await fetch('/api'+p,Object.assign({credentials:'same-origin',headers:{'content-type':'application/json'}},o||{}));
+ const raw=await r.text();let d={};
+ try{d=raw?JSON.parse(raw):{}}catch(parseError){console.error('Non-JSON API response:',r.status,raw);throw Error('Server API mengembalikan respons tidak valid (HTTP '+r.status+').')}
+ if(!r.ok)throw Error(d.error||('Permintaan gagal (HTTP '+r.status+').'));
+ return d
+}
 function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3500)}
 async function login(msg){
 let x=document.getElementById('auth-layer');if(!x){x=document.createElement('div');x.id='auth-layer';document.body.append(x)}
