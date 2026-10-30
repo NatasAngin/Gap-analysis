@@ -12,13 +12,17 @@ async function login(msg){
   let needsSetup=false;
   try{needsSetup=(await api('/setup/status')).needsSetup===true}catch(e){}
   if(needsSetup){
-    x.innerHTML='<form id="bootstrap-form" class="auth-card"><div class="eyebrow">PT BORNEO ALUMINA INDONESIA</div><div class="auth-logo">bai<span>▪</span></div><h1>Inisialisasi Administrator</h1><p>Buat akun Administrator pertama. Secret diverifikasi langsung oleh Cloudflare Worker dan tidak disimpan di browser.</p><div id="login-error" class="auth-error">'+esc(msg||'')+'</div><label>Username<input name="username" autocomplete="username" required maxlength="60"></label><label>Nama Administrator<input name="displayName" autocomplete="name" required maxlength="120"></label><label>Password Administrator<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label><label>Cloudflare Bootstrap Secret<input name="bootstrapSecret" type="password" autocomplete="off" required maxlength="256"></label><button class="primary">Buat Administrator pertama</button><small>Secret ini harus sama dengan nilai BOOTSTRAP_SECRET yang disimpan pada Cloudflare Worker. Setelah akun berhasil dibuat, hapus secret dari Cloudflare Dashboard.</small></form>';
-    $('bootstrap-form').onsubmit=async e=>{
-      e.preventDefault();
-      const form=e.currentTarget,submit=form.querySelector('button[type="submit"],button:not([type])'),b=Object.fromEntries(new FormData(form));
-      submit.disabled=true;submit.textContent='Memproses...';
-      try{await api('/setup/admin',{method:'POST',body:JSON.stringify(b)});form.reset();login('Administrator berhasil dibuat. Silakan masuk.')}
-      catch(err){$('login-error').textContent=err.message;submit.disabled=false;submit.textContent='Buat Administrator pertama'}
+    x.innerHTML='<section class="auth-card"><div class="eyebrow">PT BORNEO ALUMINA INDONESIA</div><div class="auth-logo">bai<span>▪</span></div><h1>Gap Analysis System</h1><p>Belum ada akun Administrator. Buat akun Administrator pertama untuk mengaktifkan aplikasi.</p><div id="login-error" class="auth-error">'+esc(msg||'')+'</div><button type="button" class="primary" id="show-admin-register">＋ Daftar Administrator</button><small>Pendaftaran ini hanya tersedia satu kali, selama database belum memiliki akun. Verifikasi menggunakan Cloudflare Bootstrap Secret.</small></section>';
+    $('show-admin-register').onclick=()=>{
+      x.innerHTML='<form id="bootstrap-form" class="auth-card"><div class="eyebrow">PT BORNEO ALUMINA INDONESIA</div><div class="auth-logo">bai<span>▪</span></div><h1>Daftar Administrator</h1><p>Buat akun Administrator pertama. Secret diverifikasi langsung oleh Cloudflare Worker dan tidak disimpan di browser.</p><div id="login-error" class="auth-error"></div><label>Username<input name="username" autocomplete="username" required maxlength="60"></label><label>Nama Administrator<input name="displayName" autocomplete="name" required maxlength="120"></label><label>Password Administrator<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label><label>Cloudflare Bootstrap Secret<input name="bootstrapSecret" type="password" autocomplete="off" required maxlength="256"></label><button class="primary">Buat Administrator pertama</button><button type="button" id="cancel-admin-register" class="secondary">Kembali</button><small>Secret harus sama dengan nilai BOOTSTRAP_SECRET pada Cloudflare Worker. Hapus secret dari Cloudflare Dashboard setelah akun berhasil dibuat.</small></form>';
+      $('cancel-admin-register').onclick=()=>login();
+      $('bootstrap-form').onsubmit=async e=>{
+        e.preventDefault();
+        const form=e.currentTarget,submit=form.querySelector('button[type="submit"],button:not([type])'),b=Object.fromEntries(new FormData(form));
+        submit.disabled=true;submit.textContent='Memproses...';
+        try{await api('/setup/admin',{method:'POST',body:JSON.stringify(b)});form.reset();login('Administrator berhasil dibuat. Silakan masuk.')}
+        catch(err){$('login-error').textContent=err.message;submit.disabled=false;submit.textContent='Buat Administrator pertama'}
+      };
     };
     return;
   }
