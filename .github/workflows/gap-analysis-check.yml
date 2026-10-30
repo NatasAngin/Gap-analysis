@@ -37,4 +37,5 @@ jobs:
           test -f work/bai-gap/dist/style.css
           test -f work/bai-gap/dist/app.js
           test -f work/bai-gap/migrations/0001_initial.sql
-          grep -q 'pages_build_output_dir = "./dist"' work/bai-gap/wrangler.toml
+          grep -q 'main = "src/worker.js"' work/bai-gap/wrangler.toml
+          grep -q 'directory = "./dist"' work/bai-gap/wrangler.toml
