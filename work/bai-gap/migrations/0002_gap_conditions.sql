@@ -1,0 +1,2 @@
+ALTER TABLE gaps ADD COLUMN actual_condition TEXT NOT NULL DEFAULT '';
+ALTER TABLE gaps ADD COLUMN ideal_condition TEXT NOT NULL DEFAULT '';
