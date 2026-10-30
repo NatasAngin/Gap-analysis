@@ -24,9 +24,9 @@ async function getUser(request, env) {
   const token = getCookie(request, "bai_gap_session");
   if (!token) return null;
   const tokenHash = await sha256(token);
-  const row = await env.DB.prepare("SELECT u.id,u.username,u.display_name,u.role,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?").bind(tokenHash).first();
+  const row = await env.GAP_ANALYSIS_DB.prepare("SELECT u.id,u.username,u.display_name,u.role,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?").bind(tokenHash).first();
   if (!row || !row.active || row.expires_at < Math.floor(Date.now() / 1000)) {
-    await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(tokenHash).run();
+    await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(tokenHash).run();
     return null;
   }
   return row;
@@ -45,7 +45,7 @@ function setCookie(token, age = SESSION_SECONDS) {
 }
 
 export async function onRequest({ request, env }) {
-  if (!env.DB) return reply({ error: "Binding D1 DB belum dikonfigurasi." }, 503);
+  if (!env.GAP_ANALYSIS_DB) return reply({ error: "Binding D1 GAP_ANALYSIS_DB belum dikonfigurasi." }, 503);
   const url = new URL(request.url), path = url.pathname.replace(/\/+$/, "") || "/", method = request.method.toUpperCase();
 
   if (!["GET","HEAD","OPTIONS"].includes(method)) {
@@ -55,7 +55,7 @@ export async function onRequest({ request, env }) {
   if (path === "/api/health" && method === "GET") return reply({ status: "ok", service: "bai-gap-api" });
 
   if (path === "/api/setup/admin" && method === "POST") {
-    const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM users").first();
+    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users").first();
     if (count.total > 0) return reply({ error: "Admin awal sudah dibuat." }, 409);
     const b = await body(request);
     if (!env.BOOTSTRAP_SECRET || !b || b.bootstrapSecret !== env.BOOTSTRAP_SECRET) return reply({ error: "Bootstrap secret tidak valid." }, 403);
@@ -63,29 +63,29 @@ export async function onRequest({ request, env }) {
       return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
     const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
     try {
-      const created = await env.DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users)")
+      const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users)")
         .bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
       if (!created.meta || created.meta.changes !== 1) return reply({ error: "Admin awal sudah dibuat." }, 409);
     } catch { return reply({ error: "Username sudah digunakan atau data tidak valid." }, 409); }
-    await audit(env.DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id);
+    await audit(env.GAP_ANALYSIS_DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id);
     return reply({ message: "Admin awal berhasil dibuat. Silakan login." },201);
   }
 
   if (path === "/api/auth/login" && method === "POST") {
     const b = await body(request);
     if (!b || !validText(b.username,60) || typeof b.password !== "string" || b.password.length > 128) return reply({error:"Username atau password salah."},400);
-    const u = await env.DB.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE").bind(b.username.trim()).first();
+    const u = await env.GAP_ANALYSIS_DB.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE").bind(b.username.trim()).first();
     if (!u || !u.active || await hashPassword(b.password,u.password_salt) !== u.password_hash) return reply({error:"Username atau password salah."},401);
     const token = randomToken(), tokenHash = await sha256(token), expires = Math.floor(Date.now()/1000)+SESSION_SECONDS;
-    await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Math.floor(Date.now()/1000)).run();
-    await env.DB.prepare("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)").bind(tokenHash,u.id,expires).run();
-    await audit(env.DB,u,"LOGIN","session");
+    await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Math.floor(Date.now()/1000)).run();
+    await env.GAP_ANALYSIS_DB.prepare("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)").bind(tokenHash,u.id,expires).run();
+    await audit(env.GAP_ANALYSIS_DB,u,"LOGIN","session");
     return reply({user:{id:u.id,username:u.username,displayName:u.display_name,role:u.role}},200,{"set-cookie":setCookie(token)});
   }
 
   if (path === "/api/auth/logout" && method === "POST") {
     const token = getCookie(request,"bai_gap_session");
-    if (token) await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
+    if (token) await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
     return reply({message:"Logout berhasil."},200,{"set-cookie":setCookie("",0)});
   }
 
@@ -95,7 +95,7 @@ export async function onRequest({ request, env }) {
   if (!user) return reply({error:"Silakan login terlebih dahulu."},401);
 
   if (path === "/api/gaps" && method === "GET") {
-    const {results} = await env.DB.prepare("SELECT id,title,domain,actual,target,priority,owner,due,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
+    const {results} = await env.GAP_ANALYSIS_DB.prepare("SELECT id,title,domain,actual,target,priority,owner,due,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
     return reply({data:results});
   }
   if (path === "/api/gaps" && method === "POST") {
@@ -103,34 +103,34 @@ export async function onRequest({ request, env }) {
     const b = await body(request);
     if (!validGap(b)) return reply({error:"Data assessment tidak lengkap atau tidak valid."},400);
     const id=crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO gaps (id,title,domain,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    await env.GAP_ANALYSIS_DB.prepare("INSERT INTO gaps (id,title,domain,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
       .bind(id,b.title.trim(),b.domain,Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.due,b.action.trim(),b.status,user.id).run();
-    await audit(env.DB,user,"CREATE","gap",id,{title:b.title,priority:b.priority});
+    await audit(env.GAP_ANALYSIS_DB,user,"CREATE","gap",id,{title:b.title,priority:b.priority});
     return reply({id,message:"Assessment disimpan."},201);
   }
 
   const gap = path.match(/^\/api\/gaps\/([a-f0-9-]+)$/i);
   if (gap && ["PUT","PATCH","DELETE"].includes(method)) {
     if (!["Admin","Assessor"].includes(user.role)) return reply({error:"Viewer hanya memiliki akses baca."},403);
-    const id=gap[1], exists=await env.DB.prepare("SELECT id FROM gaps WHERE id=?").bind(id).first();
+    const id=gap[1], exists=await env.GAP_ANALYSIS_DB.prepare("SELECT id FROM gaps WHERE id=?").bind(id).first();
     if (!exists) return reply({error:"Assessment tidak ditemukan."},404);
     if (method==="DELETE") {
       if (user.role!=="Admin") return reply({error:"Hanya Admin yang dapat menghapus assessment."},403);
-      await env.DB.prepare("DELETE FROM gaps WHERE id=?").bind(id).run();
-      await audit(env.DB,user,"DELETE","gap",id);
+      await env.GAP_ANALYSIS_DB.prepare("DELETE FROM gaps WHERE id=?").bind(id).run();
+      await audit(env.GAP_ANALYSIS_DB,user,"DELETE","gap",id);
       return reply({message:"Assessment dihapus."});
     }
     const b=await body(request);
     if (!validGap(b)) return reply({error:"Data assessment tidak valid."},400);
-    await env.DB.prepare("UPDATE gaps SET title=?,domain=?,actual=?,target=?,priority=?,owner=?,due=?,action=?,status=?,updated_at=datetime('now') WHERE id=?")
+    await env.GAP_ANALYSIS_DB.prepare("UPDATE gaps SET title=?,domain=?,actual=?,target=?,priority=?,owner=?,due=?,action=?,status=?,updated_at=datetime('now') WHERE id=?")
       .bind(b.title.trim(),b.domain,Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.due,b.action.trim(),b.status,id).run();
-    await audit(env.DB,user,"UPDATE","gap",id,{title:b.title,status:b.status});
+    await audit(env.GAP_ANALYSIS_DB,user,"UPDATE","gap",id,{title:b.title,status:b.status});
     return reply({message:"Assessment diperbarui."});
   }
 
   if (path === "/api/users" && method === "GET") {
     if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
-    const {results}=await env.DB.prepare("SELECT id,username,display_name AS displayName,role,active,created_at AS createdAt FROM users ORDER BY created_at DESC").all();
+    const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,display_name AS displayName,role,active,created_at AS createdAt FROM users ORDER BY created_at DESC").all();
     return reply({data:results});
   }
   if (path === "/api/users" && method === "POST") {
@@ -139,9 +139,9 @@ export async function onRequest({ request, env }) {
     if (!b || !validText(b.username,60) || !validText(b.displayName,120) || typeof b.password!=="string" || b.password.length<12 || b.password.length>128 || !ROLES.includes(b.role))
       return reply({error:"Isi username, nama, role, dan password minimal 12 karakter."},400);
     const salt=randomToken(),id=crypto.randomUUID(),hash=await hashPassword(b.password,salt);
-    try { await env.DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) VALUES (?,?,?,?,?,?)").bind(id,b.username.trim(),b.displayName.trim(),hash,salt,b.role).run(); }
+    try { await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) VALUES (?,?,?,?,?,?)").bind(id,b.username.trim(),b.displayName.trim(),hash,salt,b.role).run(); }
     catch { return reply({error:"Username sudah digunakan."},409); }
-    await audit(env.DB,user,"CREATE","user",id,{username:b.username,role:b.role});
+    await audit(env.GAP_ANALYSIS_DB,user,"CREATE","user",id,{username:b.username,role:b.role});
     return reply({id,message:"Pengguna dibuat."},201);
   }
   const userRoute=path.match(/^\/api\/users\/([a-f0-9-]+)$/i);
@@ -149,24 +149,24 @@ export async function onRequest({ request, env }) {
     if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
     const id=userRoute[1];
     if (id===user.id) return reply({error:"Admin tidak dapat menonaktifkan akunnya sendiri."},400);
-    const target=await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
+    const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
     if (!target) return reply({error:"Pengguna tidak ditemukan."},404);
     if (method==="DELETE") {
-      await env.DB.prepare("UPDATE users SET active=0,updated_at=datetime('now') WHERE id=?").bind(id).run();
-      await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
-      await audit(env.DB,user,"DISABLE","user",id);
+      await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET active=0,updated_at=datetime('now') WHERE id=?").bind(id).run();
+      await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
+      await audit(env.GAP_ANALYSIS_DB,user,"DISABLE","user",id);
       return reply({message:"Pengguna dinonaktifkan."});
     }
     const b=await body(request);
     if (!b || !ROLES.includes(b.role) || typeof b.active!=="boolean") return reply({error:"Role atau status pengguna tidak valid."},400);
-    await env.DB.prepare("UPDATE users SET role=?,active=?,updated_at=datetime('now') WHERE id=?").bind(b.role,b.active?1:0,id).run();
-    if (!b.active) await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
-    await audit(env.DB,user,"UPDATE","user",id,{role:b.role,active:b.active});
+    await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET role=?,active=?,updated_at=datetime('now') WHERE id=?").bind(b.role,b.active?1:0,id).run();
+    if (!b.active) await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
+    await audit(env.GAP_ANALYSIS_DB,user,"UPDATE","user",id,{role:b.role,active:b.active});
     return reply({message:"Hak akses diperbarui."});
   }
   if (path==="/api/audit" && method==="GET") {
     if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
-    const {results}=await env.DB.prepare("SELECT id,username,action,entity,entity_id AS entityId,details,created_at AS createdAt FROM audit_logs ORDER BY id DESC LIMIT 300").all();
+    const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,action,entity,entity_id AS entityId,details,created_at AS createdAt FROM audit_logs ORDER BY id DESC LIMIT 300").all();
     return reply({data:results});
   }
   return reply({error:"Endpoint tidak ditemukan."},404);
