@@ -1,0 +1,9 @@
+name = "bai-gap-analysis"
+compatibility_date = "2026-10-30"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "GAP_ANALYSIS_DB"
+database_name = "bai-gap-production"
+database_id = "24585639-21b0-4a44-bbb2-91b61daa317f"
+migrations_dir = "./migrations"
