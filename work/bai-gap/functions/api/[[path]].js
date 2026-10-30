@@ -17,8 +17,10 @@ async function hashPassword(password, salt) {
   return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 310000, hash: "SHA-256" }, key, 256));
 }
 async function audit(db, actor, action, entity, entityId = null, details = null) {
+  // Public workspace has no corresponding users row; keep audit history without a user FK.
+  const userId = actor && actor.id !== "public-workspace" ? actor.id : null;
   await db.prepare("INSERT INTO audit_logs (user_id,username,action,entity,entity_id,details) VALUES (?,?,?,?,?,?)")
-    .bind(actor ? actor.id : null, actor ? actor.username : "system", action, entity, entityId, details ? JSON.stringify(details) : null).run();
+    .bind(userId, actor ? actor.username : "system", action, entity, entityId, details ? JSON.stringify(details) : null).run();
 }
 async function getUser(request, env) {
   const token = getCookie(request, "bai_gap_session");
@@ -44,7 +46,7 @@ function setCookie(token, age = SESSION_SECONDS) {
   return "bai_gap_session=" + encodeURIComponent(token) + "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" + age;
 }
 
-export async function onRequest({ request, env }) {
+async function handleRequest({ request, env }) {
   if (!env.GAP_ANALYSIS_DB) return reply({ error: "Binding D1 GAP_ANALYSIS_DB belum dikonfigurasi." }, 503);
   const url = new URL(request.url), path = url.pathname.replace(/\/+$/, "") || "/", method = request.method.toUpperCase();
 
@@ -176,4 +178,14 @@ export async function onRequest({ request, env }) {
     return reply({data:results});
   }
   return reply({error:"Endpoint tidak ditemukan."},404);
+}
+
+export async function onRequest(context) {
+  try {
+    return await handleRequest(context);
+  } catch (error) {
+    // Always return JSON so the client can display a useful, consistent error.
+    console.error("BAI Gap API failure:", error);
+    return reply({ error: "Terjadi kesalahan pada server saat memproses permintaan. Silakan coba kembali." }, 500);
+  }
 }
