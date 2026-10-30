@@ -1,4 +1,5 @@
 name: Apply Gap Analysis D1 migrations
+# Trigger validation after Cloudflare token rotation
 
 on:
   workflow_dispatch:
