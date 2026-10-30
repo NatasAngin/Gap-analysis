@@ -7,3 +7,8 @@ binding = "GAP_ANALYSIS_DB"
 database_name = "bai-gap-production"
 database_id = "24585639-21b0-4a44-bbb2-91b61daa317f"
 migrations_dir = "./migrations"
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
