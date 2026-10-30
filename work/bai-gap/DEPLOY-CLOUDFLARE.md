@@ -1,59 +1,48 @@
-# BAI Gap Analysis — Cloudflare Pages + D1
+# BAI Gap Analysis — Cloudflare Workers + Static Assets + D1
 
-Aplikasi ini adalah **Cloudflare Pages project**, bukan Cloudflare Worker biasa. Frontend statis berada di `dist/`; API berada di `functions/api/[[path]].js` dan otomatis dipublikasikan sebagai Pages Functions.
+Repository ini disiapkan untuk **Cloudflare Workers Builds** dengan perintah deployment default `npx wrangler deploy`. Worker entrypoint berada di `src/worker.js`, frontend statis disajikan melalui Workers Static Assets dari folder `dist/`, dan API tetap memakai handler autentikasi/RBAC yang sudah ada di `functions/api/[[path]].js`.
 
-## 1. Pengaturan Cloudflare Pages
+## 1. Pengaturan Cloudflare Workers Builds
 
 | Pengaturan | Nilai |
 |---|---|
-| Project name | `bai-gap-analysis` |
+| Project/Worker name | `bai-gap-analysis` |
 | Production branch | `main` |
 | Root directory | `work/bai-gap` |
-| Framework preset | `None` |
-| Build command | Kosongkan |
-| Build output directory | `dist` |
+| Build command | Kosongkan (tidak ada proses build) |
+| Deploy command | `npx wrangler deploy` |
 
-Hubungkan repository melalui **Workers & Pages → Create application → Pages → Connect to Git**. Jangan isi Deploy command dengan `npx wrangler deploy`; itu perintah untuk Worker, bukan Pages. Untuk Direct Upload, gunakan `npx wrangler pages deploy dist --project-name bai-gap-analysis` dari folder `work/bai-gap`.
+Pastikan deployment memakai branch `main`. Jika dashboard menyediakan pilihan **Root directory**, isi `work/bai-gap`. Jangan arahkan root directory ke folder repository paling atas karena konfigurasi Wrangler aplikasi berada di `work/bai-gap/wrangler.toml`.
 
-## 2. Konfigurasi D1
+Worker sekarang memiliki entrypoint eksplisit dan konfigurasi Static Assets. Dengan demikian, `npx wrangler deploy` tidak lagi perlu menebak folder aset. Request `/api/*` diteruskan ke handler API, sedangkan request lainnya disajikan dari `dist/`.
+
+## 2. D1 database
 
 Database produksi:
-- Database name: `bai-gap-production`
-- Database ID: `24585639-21b0-4a44-bbb2-91b61daa317f`
+- Name: `bai-gap-production`
+- ID: `24585639-21b0-4a44-bbb2-91b61daa317f`
 - Binding variable: `GAP_ANALYSIS_DB`
 
-Konfigurasi ini sudah ditulis di `wrangler.toml`. Binding variable di Cloudflare Pages harus sama persis:
+Binding di `wrangler.toml` sudah menggunakan nama yang sama dengan yang dibaca oleh kode API. Pastikan database yang dipilih di Cloudflare memiliki ID yang sama. Jangan membuat database baru jika database produksi ini masih tersedia.
 
-1. Buka Pages project `bai-gap-analysis`.
-2. Masuk **Settings → Bindings → Add → D1 database**.
-3. Isi Variable name dengan `GAP_ANALYSIS_DB`.
-4. Pilih database `bai-gap-production` dan pastikan ID-nya cocok dengan UUID di atas.
-5. Simpan lalu redeploy project.
-
-Kode Pages Function mengakses database melalui `env.GAP_ANALYSIS_DB`. Jangan gunakan binding lama `DB` bersamaan dengan nama binding baru. Untuk Preview, disarankan menggunakan database terpisah agar data uji tidak bercampur dengan produksi.
-
-## 3. Terapkan migrasi database
-
-Dari folder `work/bai-gap`, jalankan:
+Terapkan migrasi dari folder `work/bai-gap`:
 
 ```bash
 npx wrangler login
 npx wrangler d1 migrations apply bai-gap-production --remote
 ```
 
-Pastikan nama database dan ID sesuai sebelum mengonfirmasi migrasi.
+## 3. Secret bootstrap Admin
 
-## 4. Secret bootstrap Admin
+Di Worker → **Settings → Variables and Secrets**, tambahkan secret Production bernama `BOOTSTRAP_SECRET` dengan nilai acak panjang. Jangan simpan secret atau password di repository atau bagikan melalui chat.
 
-Di Pages project → **Settings → Variables and Secrets**, tambahkan secret Production bernama `BOOTSTRAP_SECRET` dengan nilai acak panjang. Jangan masukkan nilainya ke repository atau bagikan melalui chat. Simpan lalu redeploy.
-
-Setelah migrasi selesai, kirim POST ke:
+Setelah migrasi dan secret dikonfigurasi, kirim POST ke:
 
 ```text
-https://bai-gap-analysis.pages.dev/api/setup/admin
+https://<alamat-worker-kamu>/api/setup/admin
 ```
 
-Contoh body JSON:
+Contoh body:
 
 ```json
 {
@@ -64,28 +53,27 @@ Contoh body JSON:
 }
 ```
 
-Endpoint hanya membuat Admin jika tabel users masih kosong. Setelah Admin pertama berhasil dibuat, hapus secret `BOOTSTRAP_SECRET` dari Pages settings lalu redeploy.
+Endpoint hanya membuat Admin jika tabel users masih kosong. Setelah Admin pertama berhasil dibuat, hapus secret `BOOTSTRAP_SECRET` dari Worker settings lalu deploy ulang.
 
-## 5. Verifikasi deployment
+## 4. Verifikasi
 
-- `GET /api/health` mengembalikan status `ok`.
+- `GET /api/health` mengembalikan `{"status":"ok","service":"bai-gap-api"}`.
+- Halaman utama dan file CSS/JS dimuat.
 - Login Admin berhasil.
 - Admin dapat membuat akun Assessor dan Viewer.
 - Assessor dapat membuat dan mengubah assessment.
-- Viewer hanya dapat membaca data.
+- Viewer hanya dapat membaca.
 - Admin dapat menghapus assessment dan melihat Audit Log.
 - Data tetap tersedia setelah login dari browser lain.
 
-Jika API mengembalikan pesan binding belum dikonfigurasi, periksa nama binding `GAP_ANALYSIS_DB` dan lakukan redeploy. Jika tabel tidak ditemukan, pastikan migrasi diterapkan pada database yang sama dengan binding Production.
-
-## 6. Hak akses
+## 5. Hak akses dan keamanan
 
 - **Admin**: kelola pengguna/role, melihat audit log, membaca/membuat/mengubah/menghapus Gap.
 - **Assessor**: membaca, membuat, dan mengubah Gap.
 - **Viewer**: hanya membaca Gap.
 
-## Catatan keamanan dan status
-
 Password di-hash menggunakan PBKDF2-HMAC-SHA256 dengan salt acak per pengguna. Cookie sesi menggunakan HttpOnly, Secure, dan SameSite=Lax; database menyimpan hash token sesi. Hak akses diperiksa di API.
 
-Perubahan konfigurasi repository tidak otomatis membuat binding/secret di dashboard Cloudflare. Deployment, penerapan migrasi, dan pengujian end-to-end tetap perlu dilakukan pada akun Cloudflare pemilik project sebelum data perusahaan dimasukkan.
+## Catatan penting
+
+Perubahan repository tidak otomatis mengatur secret atau konfigurasi akun Cloudflare. Pastikan root directory Workers Builds adalah `work/bai-gap`, D1 binding tersedia sebagai `GAP_ANALYSIS_DB`, dan secret `BOOTSTRAP_SECRET` telah dibuat sebelum bootstrap Admin. Uji deployment dan API sebelum memasukkan data perusahaan.
