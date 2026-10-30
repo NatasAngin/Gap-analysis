@@ -189,7 +189,7 @@ async function handleRequest({ request, env }) {
     const id=gap[1], exists=await env.GAP_ANALYSIS_DB.prepare("SELECT id FROM gaps WHERE id=?").bind(id).first();
     if (!exists) return reply({error:"Assessment tidak ditemukan."},404);
     if (method==="DELETE") {
-      if (user.role!=="Admin") return reply({error:"Hanya Admin yang dapat menghapus assessment."},403);
+      // Assessor dapat menghapus temuan pada workspace operasional; Viewer tetap read-only.
       await env.GAP_ANALYSIS_DB.prepare("DELETE FROM gaps WHERE id=?").bind(id).run();
       await audit(env.GAP_ANALYSIS_DB,user,"DELETE","gap",id);
       return reply({message:"Assessment dihapus."});
