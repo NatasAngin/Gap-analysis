@@ -1,68 +1,120 @@
 # BAI Gap Analysis — Cloudflare Pages + D1
 
-## Implemented backend foundation
-- Pages Functions API for login/logout/session validation.
-- D1 data model for users, sessions, Gap records and audit logs.
-- PBKDF2-HMAC-SHA256 password hashing with per-user random salt (310,000 iterations).
-- Opaque random session cookie marked Secure, HttpOnly and SameSite=Lax; only its SHA-256 digest is stored.
-- Server-side role checks: Admin, Assessor and Viewer.
-- One-time first-admin bootstrap endpoint, protected by a Cloudflare secret.
-- Audit records for login, user changes and Gap changes.
+Aplikasi ini adalah **Cloudflare Pages project**, bukan Cloudflare Worker biasa.
+Frontend statis berada di `dist/`; API berada di `functions/api/[[path]].js` dan otomatis dipublikasikan sebagai Pages Functions.
 
-## Cloudflare Pages project settings
-Connect repository NatasAngin/Gap-analysis:
-- Production branch: main (merge this feature branch after review)
-- Root directory: work/bai-gap
-- Framework preset: None
-- Build command: leave blank
-- Build output directory: dist
+## 1. Buat project Cloudflare Pages (Git integration)
 
-Root directory is set to the Gap Analysis project folder because the repository is a monorepo with other projects.
+1. Buka Cloudflare Dashboard → **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**.
+2. Pilih repository `NatasAngin/Gap-analysis`.
+3. Isi pengaturan berikut:
 
-## Create and bind D1
-1. Cloudflare Dashboard → Storage & databases → D1 SQL Database → Create database: bai-gap-production.
-2. Copy the database ID and replace REPLACE_WITH_D1_DATABASE_ID in wrangler.toml.
-3. In Pages → bai-gap-analysis → Settings → Functions → D1 database bindings, add binding name DB and select bai-gap-production. Configure Production and Preview independently if both are used.
-4. Apply migration from the work/bai-gap directory:
-   npm install --save-dev wrangler
-   npx wrangler login
-   npx wrangler d1 migrations apply bai-gap-production --remote
+| Pengaturan | Nilai |
+|---|---|
+| Project name | `bai-gap-analysis` |
+| Production branch | `main` |
+| Root directory | `work/bai-gap` |
+| Framework preset | `None` |
+| Build command | Kosongkan |
+| Build output directory | `dist` |
 
-## First Admin bootstrap
-Pages → Settings → Variables and Secrets: add secret BOOTSTRAP_SECRET with a long random value (32+ characters). Redeploy.
-Once deployed and D1 migration is applied, POST JSON to:
-https://YOUR-PROJECT.pages.dev/api/setup/admin
+4. Simpan dan deploy. Git integration akan menjalankan deployment ketika perubahan pada branch produksi masuk.
+5. **Jangan** isi Deploy command dengan `npx wrangler deploy`. Perintah itu untuk Worker, bukan Pages.
+6. Jika log masih menampilkan `Executing user deploy command: npx wrangler deploy`, kemungkinan project yang dibuat adalah Worker/Workers Builds. Buat project baru melalui alur **Pages → Connect to Git** seperti langkah pertama.
 
+Repository ini monorepo. Root directory wajib diarahkan ke `work/bai-gap`, bukan root repository.
+
+## 2. Buat database D1
+
+1. Cloudflare Dashboard → **Storage & databases** → **D1 SQL Database** → Create database.
+2. Nama database: `bai-gap-production`.
+3. Buka Pages project `bai-gap-analysis` → **Settings → Bindings** → Add → **D1 database**.
+4. Isi **Variable name** persis `DB`, lalu pilih database `bai-gap-production`.
+5. Pastikan binding ditambahkan pada environment **Production**. Untuk Preview, gunakan database terpisah (misalnya `bai-gap-preview`) agar data uji tidak bercampur dengan data produksi.
+6. Simpan perubahan binding lalu lakukan redeploy.
+
+Kode API membaca database melalui `env.DB`. Nama binding harus persis `DB`.
+
+## 3. Terapkan skema database
+
+Di terminal, masuk ke folder aplikasi:
+
+```bash
+cd work/bai-gap
+npx wrangler login
+npx wrangler d1 migrations apply bai-gap-production --remote
+```
+
+Pilih konfirmasi ketika diminta. Perintah ini menerapkan file di folder `migrations/` ke database remote. Pastikan nama database benar sebelum menekan konfirmasi.
+
+Jika perintah migrasi tidak menemukan konfigurasi migrasi, jalankan SQL awal secara langsung:
+
+```bash
+npx wrangler d1 execute bai-gap-production --remote --file=./migrations/0001_initial.sql
+```
+
+File SQL menggunakan `CREATE TABLE IF NOT EXISTS`, sehingga dapat dijalankan ulang tanpa membuat tabel duplikat.
+
+## 4. Tambahkan secret bootstrap Admin
+
+1. Pages project → **Settings → Variables and Secrets**.
+2. Pada environment Production, tambahkan secret bernama `BOOTSTRAP_SECRET`.
+3. Gunakan nilai acak panjang (minimal 32 karakter). Jangan menaruh nilainya di repository atau membagikannya melalui chat.
+4. Simpan lalu redeploy.
+
+Setelah deployment selesai dan migrasi D1 berhasil, buat Admin pertama dengan mengirim POST ke:
+
+```text
+https://bai-gap-analysis.pages.dev/api/setup/admin
+```
+
+Contoh body JSON:
+
+```json
 {
-  "bootstrapSecret": "THE_SECRET_FROM_CLOUDFLARE",
+  "bootstrapSecret": "ISI_DENGAN_SECRET_YANG_DISIMPAN_DI_CLOUDFLARE",
   "username": "it.admin",
   "displayName": "IT Administrator",
-  "password": "USE-A-UNIQUE-PASSWORD-AT-LEAST-12-CHARACTERS"
+  "password": "GUNAKAN_PASSWORD_UNIK_MINIMAL_12_KARAKTER"
 }
+```
 
-This endpoint only succeeds while the users table is empty. After creating the first Admin, remove BOOTSTRAP_SECRET from Pages secrets and redeploy.
+Endpoint hanya dapat membuat Admin ketika tabel users masih kosong. Setelah Admin pertama berhasil dibuat, **hapus secret `BOOTSTRAP_SECRET` dari pengaturan Pages dan redeploy**. Jangan menyimpan secret atau password produksi di GitHub.
 
-## Role policy
-- Admin: user/role management, view audit logs, read/create/update/delete Gap records.
-- Assessor: read/create/update Gap records.
-- Viewer: read-only Gap records.
-- Only Admin can delete a Gap. Admin cannot deactivate their own account.
+## 5. Verifikasi setelah deployment
 
-## API routes
-GET /api/health
-POST /api/setup/admin
-POST /api/auth/login
-POST /api/auth/logout
-GET /api/auth/me
-GET /api/gaps
-POST /api/gaps
-PUT /api/gaps/:id
-DELETE /api/gaps/:id
-GET /api/users (Admin)
-POST /api/users (Admin)
-PATCH /api/users/:id (Admin)
-DELETE /api/users/:id (Admin; deactivates)
-GET /api/audit (Admin)
+Buka alamat Pages project dan periksa:
 
-## Important
-The existing dist/app.js still uses LocalStorage and demo records. This commit is the backend/API and schema foundation only; it does not yet connect the visible UI to these endpoints or add login/user-management screens. Do not enter real company information or treat the application as production-ready until frontend integration, security review, and end-to-end tests are completed.
+- `GET /api/health` mengembalikan `{"status":"ok","service":"bai-gap-api"}`.
+- Halaman menampilkan form login.
+- Admin dapat login dan membuat akun Assessor serta Viewer.
+- Assessor dapat membuat dan mengubah assessment.
+- Viewer hanya dapat membaca data.
+- Admin dapat menghapus assessment dan melihat Audit Log.
+- Data tetap tersedia setelah logout/login atau membuka aplikasi dari browser lain.
+
+Jika `/api/health` menampilkan pesan binding D1 belum dikonfigurasi, periksa binding bernama `DB` dan pastikan sudah redeploy setelah binding ditambahkan. Jika tabel tidak ditemukan, terapkan migrasi pada database yang sama dengan binding Production.
+
+## 6. Deploy manual (opsional)
+
+Jika menggunakan Direct Upload dan bukan Git integration, dari folder `work/bai-gap` jalankan:
+
+```bash
+npx wrangler pages deploy dist --project-name bai-gap-analysis
+```
+
+Jangan gunakan `npx wrangler deploy` untuk project Pages.
+
+## 7. Hak akses
+
+- **Admin**: kelola pengguna/role, melihat audit log, membaca/membuat/mengubah/menghapus Gap.
+- **Assessor**: membaca, membuat, dan mengubah Gap.
+- **Viewer**: hanya membaca Gap.
+
+## Catatan keamanan dan status pengujian
+
+- Password di-hash menggunakan PBKDF2-HMAC-SHA256 dengan salt acak per pengguna.
+- Cookie sesi ditandai HttpOnly, Secure, dan SameSite=Lax; database menyimpan hash token sesi.
+- Hak akses diperiksa kembali di API, bukan hanya disembunyikan dari tampilan.
+- Sebelum memasukkan data perusahaan, lakukan pengujian end-to-end di Pages + D1, aktifkan proteksi/rate limiting untuk endpoint login melalui Cloudflare, dan lakukan review keamanan.
+- Kode dapat diperiksa di GitHub, tetapi deployment, pembuatan D1, binding, secret, dan uji runtime Cloudflare tetap membutuhkan akses ke akun Cloudflare pemilik project.
