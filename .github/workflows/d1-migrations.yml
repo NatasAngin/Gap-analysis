@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - "work/bai-gap/migrations/**"
+      - ".github/workflows/d1-migrations.yml"
 
 concurrency:
   group: bai-gap-production-d1-migrations
