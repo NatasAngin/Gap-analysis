@@ -97,8 +97,13 @@ async function handleRequest({ request, env }) {
   }
 
   // Public internal workspace mode: no login/session is required.
-  // Writes are available to workspace users; user administration and audit endpoints remain restricted.
-  const user = { id: "public-workspace", username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
+  // Keep the legacy created_by foreign key valid without requiring a schema migration.
+  // INSERT OR IGNORE makes initialization safe when requests arrive concurrently.
+  const workspaceId = "public-workspace";
+  await env.GAP_ANALYSIS_DB.prepare(
+    "INSERT OR IGNORE INTO users (id,username,display_name,password_hash,password_salt,role,active) VALUES (?,?,?,?,?,'Assessor',1)"
+  ).bind(workspaceId, "workspace", "Workspace", randomToken(), randomToken()).run();
+  const user = { id: workspaceId, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
   if (path === "/api/auth/me" && method === "GET")
     return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
 
