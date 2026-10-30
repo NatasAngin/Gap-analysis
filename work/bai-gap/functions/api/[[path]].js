@@ -48,6 +48,26 @@ function setCookie(token, age = SESSION_SECONDS) {
 
 async function handleRequest({ request, env }) {
   if (!env.GAP_ANALYSIS_DB) return reply({ error: "Binding D1 GAP_ANALYSIS_DB belum dikonfigurasi." }, 503);
+  // Backward-compatible, non-destructive repair when only the initial D1 migration exists.
+  const gapColumns = await env.GAP_ANALYSIS_DB.prepare("PRAGMA table_info(gaps)").all();
+  const existingColumns = new Set((gapColumns.results || []).map(column => column.name));
+  if (!existingColumns.has("actual_condition")) {
+    try {
+      await env.GAP_ANALYSIS_DB.prepare("ALTER TABLE gaps ADD COLUMN actual_condition TEXT NOT NULL DEFAULT ''").run();
+    } catch (error) {
+      const check = await env.GAP_ANALYSIS_DB.prepare("PRAGMA table_info(gaps)").all();
+      if (!(check.results || []).some(column => column.name === "actual_condition")) throw error;
+    }
+  }
+  if (!existingColumns.has("ideal_condition")) {
+    try {
+      await env.GAP_ANALYSIS_DB.prepare("ALTER TABLE gaps ADD COLUMN ideal_condition TEXT NOT NULL DEFAULT ''").run();
+    } catch (error) {
+      const check = await env.GAP_ANALYSIS_DB.prepare("PRAGMA table_info(gaps)").all();
+      if (!(check.results || []).some(column => column.name === "ideal_condition")) throw error;
+    }
+  }
+
   const url = new URL(request.url), path = url.pathname.replace(/\/+$/, "") || "/", method = request.method.toUpperCase();
 
   if (!["GET","HEAD","OPTIONS"].includes(method)) {
