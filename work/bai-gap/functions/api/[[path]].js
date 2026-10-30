@@ -63,7 +63,9 @@ export async function onRequest({ request, env }) {
       return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
     const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
     try {
-      await env.DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) VALUES (?,?,?,?,?,'Admin')").bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
+      const created = await env.DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users)")
+        .bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
+      if (!created.meta || created.meta.changes !== 1) return reply({ error: "Admin awal sudah dibuat." }, 409);
     } catch { return reply({ error: "Username sudah digunakan atau data tidak valid." }, 409); }
     await audit(env.DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id);
     return reply({ message: "Admin awal berhasil dibuat. Silakan login." },201);
