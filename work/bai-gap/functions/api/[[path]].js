@@ -54,6 +54,11 @@ export async function onRequest({ request, env }) {
   }
   if (path === "/api/health" && method === "GET") return reply({ status: "ok", service: "bai-gap-api" });
 
+  if (path === "/api/setup/status" && method === "GET") {
+    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users").first();
+    return reply({ needsSetup: Number(count.total) === 0 });
+  }
+
   if (path === "/api/setup/admin" && method === "POST") {
     const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users").first();
     if (count.total > 0) return reply({ error: "Admin awal sudah dibuat." }, 409);
