@@ -5,3 +5,17 @@
 /* Readable descriptions for the actual and ideal condition columns. */
 .condition-cell{white-space:normal;min-width:220px;max-width:320px;line-height:1.55;color:#536b73}
 @media(max-width:760px){.condition-cell{min-width:190px;max-width:250px}}
+
+/* Bulk import experience */
+.import-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 12px}
+.filepick{display:inline-flex;align-items:center;justify-content:center;margin:0;padding:10px 14px;border:1px solid #dce6e3;border-radius:6px;background:#f6faf8;color:#315d53;font-size:12px;cursor:pointer}
+.import-help{font-size:11px;line-height:1.6;color:#788b91;background:#f6f9f8;border-radius:7px;padding:12px}
+.import-summary{font-size:12px;color:#45645e;margin:14px 0;font-weight:600}
+.import-preview{max-height:310px;border:1px solid #edf0f2;border-radius:7px}
+.import-preview table{min-width:720px}
+.import-preview td{white-space:normal;max-width:240px;line-height:1.4}
+.import-error{color:#b34d3d}.import-valid{color:#23836a;font-weight:600}
+#runImport:disabled{opacity:.45;cursor:not-allowed}
+#importer{width:850px;max-width:96vw}
+#importer .cardhead p{margin:5px 0 0;font-size:11px;color:#819198}
+@media(max-width:760px){#importer{padding:18px}.import-tools{align-items:stretch}.import-tools button,.filepick{flex:1}}
