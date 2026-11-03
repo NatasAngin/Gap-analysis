@@ -168,6 +168,21 @@ async function handleRequest({ request, env }) {
   if (path === "/api/auth/me" && method === "GET")
     return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
 
+  if (path === "/api/gaps/import" && method === "POST") {
+    if (!["Admin","Assessor"].includes(user.role)) return reply({error:"Viewer hanya memiliki akses baca."},403);
+    const b = await body(request);
+    if (!b || !Array.isArray(b.rows) || b.rows.length < 1) return reply({error:"File tidak berisi data assessment."},400);
+    if (b.rows.length > 100) return reply({error:"Maksimal 100 temuan per sekali import. Pecah file menjadi beberapa bagian."},400);
+    const errors = [];
+    b.rows.forEach((row,index) => { if (!validGap(row)) errors.push({row:index+2,error:"Data wajib tidak lengkap atau format/nilai tidak valid."}); });
+    if (errors.length) return reply({error:"Import dibatalkan. Perbaiki baris yang ditandai lalu unggah ulang.",details:errors},400);
+    const statements = b.rows.map(row => db.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(crypto.randomUUID(),row.title.trim(),row.domain.trim(),row.actual_condition.trim(),row.ideal_condition.trim(),Number(row.actual),Number(row.target),row.priority,row.owner.trim(),row.due,row.action.trim(),row.status,user.id));
+    await db.batch(statements);
+    await audit(db,user,"IMPORT","gap",null,{count:b.rows.length,filename:validText(b.filename,120)?b.filename:"uploaded-file"});
+    return reply({message:"Import berhasil.",imported:b.rows.length},201);
+  }
+
   if (path === "/api/gaps" && method === "GET") {
     const {results} = await env.GAP_ANALYSIS_DB.prepare("SELECT id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
     return reply({data:results});
