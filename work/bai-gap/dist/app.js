@@ -7,7 +7,7 @@ async function api(p,o){
  const r=await fetch('/api'+p,Object.assign({credentials:'same-origin',headers:{'content-type':'application/json'}},o||{}));
  const raw=await r.text();let d={};
  try{d=raw?JSON.parse(raw):{}}catch(parseError){console.error('Non-JSON API response:',r.status,raw);throw Error('Server API mengembalikan respons tidak valid (HTTP '+r.status+').')}
- if(!r.ok)throw Error(d.error||('Permintaan gagal (HTTP '+r.status+').'));
+ if(!r.ok)throw Error((d.error||('Permintaan gagal (HTTP '+r.status+').'))+(d.detail?' Detail: '+d.detail:''));
  return d
 }
 function toast(s){$('toast').textContent=s;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3500)}
