@@ -33,3 +33,18 @@
 .detail-section h3{font-size:12px;color:#34534b;margin:0 0 7px}
 .detail-section p{font-size:12px;line-height:1.65;color:#627772;white-space:pre-wrap;margin:0;overflow-wrap:anywhere}
 @media(max-width:600px){.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#detailDialog{padding:18px}}
+
+/* Administrator portal access */
+.side-auth{display:block;width:100%;margin-top:9px;padding:9px 11px;border:1px solid #cbdad5;border-radius:6px;background:#f5faf7;color:#315d53;font-size:11px;font-weight:700;text-align:center;cursor:pointer}
+.side-auth:hover{background:#e8f2ed}
+.side-auth[hidden]{display:none}
+#auth-layer{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:22px;background:rgba(14,35,31,.72);backdrop-filter:blur(5px)}
+#shell[aria-hidden="true"]{filter:blur(2px);pointer-events:none;user-select:none}
+.auth-card{width:min(430px,94vw);padding:30px;background:#fff;border:1px solid #e2ebe7;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:13px}
+.auth-card h1{margin:0;color:#234c42;font-size:23px}
+.auth-card p,.auth-card small{color:#71837d;font-size:12px;line-height:1.6}
+.auth-card label{display:flex;flex-direction:column;gap:6px;color:#526b63;font-size:12px;font-weight:600}
+.auth-card input{width:100%;padding:11px;border:1px solid #d8e3de;border-radius:6px;font:inherit}
+.auth-logo{font-size:32px;font-weight:800;color:#315f52;letter-spacing:-2px}
+.auth-logo span{color:#e68b4b}
+.auth-error{min-height:16px;color:#b34d3d;font-size:12px}
