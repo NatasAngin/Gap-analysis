@@ -82,6 +82,7 @@ async function handleRequest({ request, env }) {
   )`).run();
   const userColumns = await db.prepare("PRAGMA table_info(users)").all();
   if (!(userColumns.results || []).some(column => column.name === "is_super_admin")) await db.prepare("ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0").run();
+  await db.prepare("UPDATE users SET is_super_admin=1 WHERE id=(SELECT id FROM users WHERE role='Admin' AND username<>'bai-public-workspace' ORDER BY created_at ASC LIMIT 1) AND NOT EXISTS (SELECT 1 FROM users WHERE is_super_admin=1)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)").run();
@@ -220,7 +221,7 @@ async function handleRequest({ request, env }) {
 
   if (path === "/api/users" && method === "GET") {
     if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
-    const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,display_name AS displayName,role,active,created_at AS createdAt FROM users ORDER BY created_at DESC").all();
+    const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,display_name AS displayName,CASE WHEN COALESCE(is_super_admin,0)=1 THEN 'Super Admin' ELSE role END AS role,active,created_at AS createdAt FROM users ORDER BY created_at DESC").all();
     return reply({data:results});
   }
   if (path === "/api/users" && method === "POST") {
@@ -258,7 +259,7 @@ async function handleRequest({ request, env }) {
     return reply({message:"Hak akses diperbarui."});
   }
   if (path==="/api/audit" && method==="GET") {
-    if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
+    if (user.role!=="Super Admin") return reply({error:"Akses khusus Super Admin."},403);
     const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,action,entity,entity_id AS entityId,details,created_at AS createdAt FROM audit_logs ORDER BY id DESC LIMIT 300").all();
     return reply({data:results});
   }
