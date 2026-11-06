@@ -164,7 +164,9 @@ async function handleRequest({ request, env }) {
     "SELECT id FROM users WHERE id=? OR username=? COLLATE NOCASE LIMIT 1"
   ).bind(workspaceId, "bai-public-workspace").first();
   if (!workspaceRow) throw new Error("Public workspace user could not be initialized in D1.");
-  const user = { id: workspaceRow.id, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
+  const workspaceUser = { id: workspaceRow.id, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
+  const sessionUser = await getUser(request, env);
+  const user = sessionUser ? { id: sessionUser.id, username: sessionUser.username, display_name: sessionUser.display_name, role: sessionUser.role, active: sessionUser.active } : workspaceUser;
   if (path === "/api/auth/me" && method === "GET")
     return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
 
