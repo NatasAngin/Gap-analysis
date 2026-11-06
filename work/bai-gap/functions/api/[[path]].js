@@ -112,12 +112,12 @@ async function handleRequest({ request, env }) {
   if (path === "/api/health" && method === "GET") return reply({ status: "ok", service: "bai-gap-api" });
 
   if (path === "/api/setup/status" && method === "GET") {
-    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users").first();
+    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users WHERE username <> 'bai-public-workspace'").first();
     return reply({ needsSetup: Number(count.total) === 0 });
   }
 
   if (path === "/api/setup/admin" && method === "POST") {
-    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users").first();
+    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users WHERE username <> 'bai-public-workspace'").first();
     if (count.total > 0) return reply({ error: "Admin awal sudah dibuat." }, 409);
     const b = await body(request);
     if (!env.BOOTSTRAP_SECRET || !b || b.bootstrapSecret !== env.BOOTSTRAP_SECRET) return reply({ error: "Bootstrap secret tidak valid." }, 403);
@@ -125,7 +125,7 @@ async function handleRequest({ request, env }) {
       return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
     const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
     try {
-      const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users)")
+      const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users WHERE username <> 'bai-public-workspace')")
         .bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
       if (!created.meta || created.meta.changes !== 1) return reply({ error: "Admin awal sudah dibuat." }, 409);
     } catch { return reply({ error: "Username sudah digunakan atau data tidak valid." }, 409); }
