@@ -84,10 +84,6 @@ async function handleRequest({ request, env }) {
   const userColumns = await db.prepare("PRAGMA table_info(users)").all();
   if (!(userColumns.results || []).some(column => column.name === "is_super_admin")) await db.prepare("ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0").run();
   await db.prepare("UPDATE users SET is_super_admin=1 WHERE id=(SELECT id FROM users WHERE role='Admin' AND username<>'bai-public-workspace' ORDER BY created_at ASC LIMIT 1) AND NOT EXISTS (SELECT 1 FROM users WHERE is_super_admin=1)").run();
-  if (!existingColumns.has("start_date")) {
-    await db.prepare("ALTER TABLE gaps ADD COLUMN start_date TEXT NOT NULL DEFAULT ''").run();
-    await db.prepare("UPDATE gaps SET start_date=substr(created_at,1,10) WHERE start_date=''").run();
-  }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)").run();
@@ -111,6 +107,10 @@ async function handleRequest({ request, env }) {
       const check = await env.GAP_ANALYSIS_DB.prepare("PRAGMA table_info(gaps)").all();
       if (!(check.results || []).some(column => column.name === "ideal_condition")) throw error;
     }
+  }
+  if (!existingColumns.has("start_date")) {
+    await db.prepare("ALTER TABLE gaps ADD COLUMN start_date TEXT NOT NULL DEFAULT ''").run();
+    await db.prepare("UPDATE gaps SET start_date=substr(created_at,1,10) WHERE start_date=''").run();
   }
 
   const url = new URL(request.url), path = url.pathname.replace(/\/+$/, "") || "/", method = request.method.toUpperCase();
