@@ -199,7 +199,7 @@ async function handleRequest({ request, env }) {
     const b = await body(request);
     if (!validGap(b)) return reply({error:"Data assessment tidak lengkap atau tidak valid."},400);
     const id=crypto.randomUUID();
-    await env.GAP_ANALYSIS_DB.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    await env.GAP_ANALYSIS_DB.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,start_date,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .bind(id,b.title.trim(),b.domain,b.actual_condition.trim(),b.ideal_condition.trim(),Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.start_date,b.due,b.action.trim(),b.status,user.id).run();
     await audit(env.GAP_ANALYSIS_DB,user,"CREATE","gap",id,{title:b.title,priority:b.priority});
     return reply({id,message:"Assessment disimpan."},201);
