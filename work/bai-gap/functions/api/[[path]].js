@@ -117,20 +117,25 @@ async function handleRequest({ request, env }) {
   }
 
   if (path === "/api/setup/admin" && method === "POST") {
-    const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users WHERE username <> 'bai-public-workspace'").first();
-    if (count.total > 0) return reply({ error: "Admin awal sudah dibuat." }, 409);
-    const b = await body(request);
-    if (!env.BOOTSTRAP_SECRET || !b || b.bootstrapSecret !== env.BOOTSTRAP_SECRET) return reply({ error: "Bootstrap secret tidak valid." }, 403);
-    if (!validText(b.username,60) || !validText(b.displayName,120) || typeof b.password !== "string" || b.password.length < 12 || b.password.length > 128)
-      return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
-    const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
     try {
+      const count = await env.GAP_ANALYSIS_DB.prepare("SELECT COUNT(*) AS total FROM users WHERE username <> 'bai-public-workspace'").first();
+      if (Number(count && count.total) > 0) return reply({ error: "Admin awal sudah dibuat." }, 409);
+      const b = await body(request);
+      if (!env.BOOTSTRAP_SECRET) return reply({ error: "BOOTSTRAP_SECRET belum dikonfigurasi pada Cloudflare Worker." }, 503);
+      if (!b || b.bootstrapSecret !== env.BOOTSTRAP_SECRET) return reply({ error: "Bootstrap secret tidak valid. Pastikan nilainya sama dengan BOOTSTRAP_SECRET di Cloudflare." }, 403);
+      if (!validText(b.username,60) || !validText(b.displayName,120) || typeof b.password !== "string" || b.password.length < 12 || b.password.length > 128)
+        return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
+      const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
       const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users WHERE username <> 'bai-public-workspace')")
         .bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
-      if (!created.meta || created.meta.changes !== 1) return reply({ error: "Admin awal sudah dibuat." }, 409);
-    } catch { return reply({ error: "Username sudah digunakan atau data tidak valid." }, 409); }
-    await audit(env.GAP_ANALYSIS_DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id);
-    return reply({ message: "Admin awal berhasil dibuat. Silakan login." },201);
+      if (!created.meta || Number(created.meta.changes) !== 1) return reply({ error: "Admin awal sudah dibuat atau username sudah digunakan." }, 409);
+      try { await audit(env.GAP_ANALYSIS_DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id); }
+      catch (auditError) { console.error("Initial admin audit write failed:", auditError); }
+      return reply({ message: "Admin awal berhasil dibuat. Silakan login." },201);
+    } catch (error) {
+      console.error("Initial administrator setup failed:", error);
+      return reply({ error: "Pendaftaran Administrator gagal diproses.", detail: String(error && error.message || error).slice(0,240) }, 500);
+    }
   }
 
   if (path === "/api/auth/login" && method === "POST") {
