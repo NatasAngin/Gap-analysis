@@ -55,3 +55,9 @@
 .auth-card input{box-sizing:border-box;min-height:48px}
 @media(max-height:760px){#auth-layer{align-items:flex-start;padding-top:18px;padding-bottom:28px}.auth-card{margin-top:0;margin-bottom:0}}
 @media(max-width:520px){#auth-layer{padding:12px}.auth-card{width:100%;padding:22px}}
+
+.score-guide{margin:18px 0 4px;padding:14px 16px;background:#f4f8f6;border:1px solid #dce9e3;border-radius:8px;color:#4d6961}
+.score-guide>b{font-size:12px;color:#315e52}
+.score-guide ol{margin:9px 0 0;padding-left:22px;display:grid;gap:5px}
+.score-guide li{font-size:11px;line-height:1.45;color:#637a73}
+.score-guide li strong{color:#365d51}
