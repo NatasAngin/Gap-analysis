@@ -14,7 +14,7 @@ function randomToken() { return hex(crypto.getRandomValues(new Uint8Array(32)));
 async function sha256(value) { return hex(await crypto.subtle.digest("SHA-256", enc.encode(value))); }
 async function hashPassword(password, salt) {
   const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 310000, hash: "SHA-256" }, key, 256));
+  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 100000, hash: "SHA-256" }, key, 256));
 }
 async function audit(db, actor, action, entity, entityId = null, details = null) {
   // Public workspace has no corresponding users row; keep audit history without a user FK.
