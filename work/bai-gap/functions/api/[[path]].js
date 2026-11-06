@@ -1,4 +1,5 @@
 const ROLES = ["Admin", "Assessor", "Viewer"];
+const USER_ROLES = ["Assessor", "Viewer"];
 const SESSION_SECONDS = 28800;
 const enc = new TextEncoder();
 
@@ -26,7 +27,7 @@ async function getUser(request, env) {
   const token = getCookie(request, "bai_gap_session");
   if (!token) return null;
   const tokenHash = await sha256(token);
-  const row = await env.GAP_ANALYSIS_DB.prepare("SELECT u.id,u.username,u.display_name,u.role,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?").bind(tokenHash).first();
+  const row = await env.GAP_ANALYSIS_DB.prepare("SELECT u.id,u.username,u.display_name,CASE WHEN COALESCE(u.is_super_admin,0)=1 THEN 'Super Admin' ELSE u.role END AS role,COALESCE(u.is_super_admin,0) AS is_super_admin,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?").bind(tokenHash).first();
   if (!row || !row.active || row.expires_at < Math.floor(Date.now() / 1000)) {
     await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(tokenHash).run();
     return null;
@@ -56,6 +57,7 @@ async function handleRequest({ request, env }) {
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, display_name TEXT NOT NULL,
     password_hash TEXT NOT NULL, password_salt TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('Admin','Assessor','Viewer')),
+    is_super_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_super_admin IN (0,1)),
     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
     created_at TEXT NOT NULL DEFAULT(datetime('now')), updated_at TEXT NOT NULL DEFAULT(datetime('now'))
   )`).run();
@@ -78,6 +80,8 @@ async function handleRequest({ request, env }) {
     action TEXT NOT NULL, entity TEXT NOT NULL, entity_id TEXT, details TEXT,
     created_at TEXT NOT NULL DEFAULT(datetime('now'))
   )`).run();
+  const userColumns = await db.prepare("PRAGMA table_info(users)").all();
+  if (!(userColumns.results || []).some(column => column.name === "is_super_admin")) await db.prepare("ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)").run();
@@ -126,7 +130,7 @@ async function handleRequest({ request, env }) {
       if (!validText(b.username,60) || !validText(b.displayName,120) || typeof b.password !== "string" || b.password.length < 12 || b.password.length > 128)
         return reply({ error: "Username/nama wajib diisi dan password admin minimal 12 karakter." }, 400);
       const salt = randomToken(), id = crypto.randomUUID(), hash = await hashPassword(b.password,salt);
-      const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) SELECT ?,?,?,?,?, 'Admin' WHERE NOT EXISTS (SELECT 1 FROM users WHERE username <> 'bai-public-workspace')")
+      const created = await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role,is_super_admin) SELECT ?,?,?,?,?, 'Admin',1 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username <> 'bai-public-workspace')")
         .bind(id,b.username.trim(),b.displayName.trim(),hash,salt).run();
       if (!created.meta || Number(created.meta.changes) !== 1) return reply({ error: "Admin awal sudah dibuat atau username sudah digunakan." }, 409);
       try { await audit(env.GAP_ANALYSIS_DB,{id,username:b.username.trim()},"CREATE_INITIAL_ADMIN","user",id); }
@@ -147,7 +151,7 @@ async function handleRequest({ request, env }) {
     await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Math.floor(Date.now()/1000)).run();
     await env.GAP_ANALYSIS_DB.prepare("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)").bind(tokenHash,u.id,expires).run();
     await audit(env.GAP_ANALYSIS_DB,u,"LOGIN","session");
-    return reply({user:{id:u.id,username:u.username,displayName:u.display_name,role:u.role}},200,{"set-cookie":setCookie(token)});
+    return reply({user:{id:u.id,username:u.username,displayName:u.display_name,role:u.is_super_admin?"Super Admin":u.role,isSuperAdmin:!!u.is_super_admin}},200,{"set-cookie":setCookie(token)});
   }
 
   if (path === "/api/auth/logout" && method === "POST") {
@@ -156,25 +160,15 @@ async function handleRequest({ request, env }) {
     return reply({message:"Logout berhasil."},200,{"set-cookie":setCookie("",0)});
   }
 
-  // Public internal workspace mode: no login/session is required.
-  // Keep the legacy created_by foreign key valid without requiring a schema migration.
-  // INSERT OR IGNORE makes initialization safe when requests arrive concurrently.
-  const workspaceId = "public-workspace";
-  await env.GAP_ANALYSIS_DB.prepare(
-    "INSERT OR IGNORE INTO users (id,username,display_name,password_hash,password_salt,role,active) VALUES (?,?,?,?,?,'Assessor',1)"
-  ).bind(workspaceId, "bai-public-workspace", "Workspace", randomToken(), randomToken()).run();
-  // Resolve the actual row after INSERT OR IGNORE: a pre-existing unique username
-  // must never leave created_by pointing at a non-existent user ID.
-  const workspaceRow = await env.GAP_ANALYSIS_DB.prepare(
-    "SELECT id FROM users WHERE id=? OR username=? COLLATE NOCASE LIMIT 1"
-  ).bind(workspaceId, "bai-public-workspace").first();
-  if (!workspaceRow) throw new Error("Public workspace user could not be initialized in D1.");
-  const workspaceUser = { id: workspaceRow.id, username: "workspace", display_name: "Workspace", role: "Assessor", active: 1 };
   const sessionUser = await getUser(request, env);
-  const user = sessionUser ? { id: sessionUser.id, username: sessionUser.username, display_name: sessionUser.display_name, role: sessionUser.role, active: sessionUser.active } : workspaceUser;
-  if (path === "/api/auth/me" && method === "GET")
-    return reply({user:{id:user.id,username:user.username,displayName:user.display_name,role:user.role}});
-
+  if (path === "/api/auth/me" && method === "GET") {
+    if (!sessionUser) return reply({error:"Sesi login tidak ditemukan. Silakan login."},401);
+    return reply({user:{id:sessionUser.id,username:sessionUser.username,displayName:sessionUser.display_name,role:sessionUser.role,isSuperAdmin:!!sessionUser.is_super_admin}});
+  }
+  if (!sessionUser) return reply({error:"Login diperlukan untuk mengakses aplikasi."},401);
+  const user = {id:sessionUser.id,username:sessionUser.username,display_name:sessionUser.display_name,role:sessionUser.role,is_super_admin:!!sessionUser.is_super_admin,active:sessionUser.active};
+  const isSuperAdmin = user.role === "Super Admin";
+  const canManageUsers = isSuperAdmin || user.role === "Admin";
   if (path === "/api/gaps/import" && method === "POST") {
     if (!["Admin","Assessor"].includes(user.role)) return reply({error:"Viewer hanya memiliki akses baca."},403);
     const b = await body(request);
