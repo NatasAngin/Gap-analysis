@@ -42,7 +42,7 @@ function validGap(b) {
   return b && validText(b.title,150) && validText(b.actual_condition,1000) && validText(b.ideal_condition,1000) && GAP_DOMAINS.includes(b.domain) && validText(b.owner,120) && dateOk(b.start_date) && dateOk(b.due) && b.start_date <= b.due && validText(b.action,2000) &&
     ["Kritis","Tinggi","Sedang","Rendah"].includes(b.priority) &&
     ["Belum dimulai","Dalam proses","Selesai"].includes(b.status) &&
-    Number.isFinite(Number(b.actual)) && Number.isFinite(Number(b.target)) &&
+    Number.isInteger(Number(b.actual)) && Number.isInteger(Number(b.target)) &&
     Number(b.actual) >= 1 && Number(b.actual) <= 5 && Number(b.target) >= 1 && Number(b.target) <= 5 && Number(b.actual) <= Number(b.target);
 }
 function setCookie(token, age = SESSION_SECONDS) {
