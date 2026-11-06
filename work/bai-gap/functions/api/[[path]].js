@@ -38,7 +38,7 @@ async function getUser(request, env) {
 async function body(request) { try { return await request.json(); } catch { return null; } }
 function validText(v, max) { return typeof v === "string" && v.trim().length > 0 && v.length <= max; }
 function validGap(b) {
-  const dateOk = value => typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
+  const dateOk = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
   return b && validText(b.title,150) && validText(b.actual_condition,1000) && validText(b.ideal_condition,1000) && GAP_DOMAINS.includes(b.domain) && validText(b.owner,120) && dateOk(b.start_date) && dateOk(b.due) && b.start_date <= b.due && validText(b.action,2000) &&
     ["Kritis","Tinggi","Sedang","Rendah"].includes(b.priority) &&
     ["Belum dimulai","Dalam proses","Selesai"].includes(b.status) &&
