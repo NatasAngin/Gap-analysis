@@ -48,3 +48,10 @@
 .auth-logo{font-size:32px;font-weight:800;color:#315f52;letter-spacing:-2px}
 .auth-logo span{color:#e68b4b}
 .auth-error{min-height:16px;color:#b34d3d;font-size:12px}
+
+/* Fix administrator portal scrolling on short screens */
+#auth-layer{display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px 16px;box-sizing:border-box}
+.auth-card{flex:0 0 auto;margin:auto 0;max-height:none;box-sizing:border-box}
+.auth-card input{box-sizing:border-box;min-height:48px}
+@media(max-height:760px){#auth-layer{align-items:flex-start;padding-top:18px;padding-bottom:28px}.auth-card{margin-top:0;margin-bottom:0}}
+@media(max-width:520px){#auth-layer{padding:12px}.auth-card{width:100%;padding:22px}}
