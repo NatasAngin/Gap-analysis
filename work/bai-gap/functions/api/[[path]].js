@@ -1,5 +1,6 @@
 const ROLES = ["Admin", "Assessor", "Viewer"];
 const USER_ROLES = ["Assessor", "Viewer"];
+const GAP_DOMAINS = ["Jaringan","Server & Virtualisasi","Keamanan","Backup & Recovery","Data Center","Monitoring","Dokumentasi","Administrasi"];
 const SESSION_SECONDS = 28800;
 const enc = new TextEncoder();
 
@@ -37,7 +38,7 @@ async function getUser(request, env) {
 async function body(request) { try { return await request.json(); } catch { return null; } }
 function validText(v, max) { return typeof v === "string" && v.trim().length > 0 && v.length <= max; }
 function validGap(b) {
-  return b && validText(b.title,150) && validText(b.actual_condition,1000) && validText(b.ideal_condition,1000) && validText(b.domain,80) && validText(b.owner,120) && validText(b.due,20) && validText(b.action,2000) &&
+  return b && validText(b.title,150) && validText(b.actual_condition,1000) && validText(b.ideal_condition,1000) && GAP_DOMAINS.includes(b.domain) && validText(b.owner,120) && validText(b.start_date,10) && validText(b.due,10) && b.start_date <= b.due && validText(b.action,2000) &&
     ["Kritis","Tinggi","Sedang","Rendah"].includes(b.priority) &&
     ["Belum dimulai","Dalam proses","Selesai"].includes(b.status) &&
     Number.isFinite(Number(b.actual)) && Number.isFinite(Number(b.target)) &&
@@ -69,7 +70,7 @@ async function handleRequest({ request, env }) {
     id TEXT PRIMARY KEY, title TEXT NOT NULL, domain TEXT NOT NULL,
     actual REAL NOT NULL CHECK(actual>=1 AND actual<=5), target REAL NOT NULL CHECK(target>=1 AND target<=5),
     priority TEXT NOT NULL CHECK(priority IN ('Kritis','Tinggi','Sedang','Rendah')),
-    owner TEXT NOT NULL, due TEXT NOT NULL, action TEXT NOT NULL,
+    owner TEXT NOT NULL, start_date TEXT NOT NULL DEFAULT '', due TEXT NOT NULL, action TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('Belum dimulai','Dalam proses','Selesai')),
     created_by TEXT NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT(datetime('now')), updated_at TEXT NOT NULL DEFAULT(datetime('now')),
@@ -83,6 +84,10 @@ async function handleRequest({ request, env }) {
   const userColumns = await db.prepare("PRAGMA table_info(users)").all();
   if (!(userColumns.results || []).some(column => column.name === "is_super_admin")) await db.prepare("ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0").run();
   await db.prepare("UPDATE users SET is_super_admin=1 WHERE id=(SELECT id FROM users WHERE role='Admin' AND username<>'bai-public-workspace' ORDER BY created_at ASC LIMIT 1) AND NOT EXISTS (SELECT 1 FROM users WHERE is_super_admin=1)").run();
+  if (!existingColumns.has("start_date")) {
+    await db.prepare("ALTER TABLE gaps ADD COLUMN start_date TEXT NOT NULL DEFAULT ''").run();
+    await db.prepare("UPDATE gaps SET start_date=substr(created_at,1,10) WHERE start_date=''").run();
+  }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC)").run();
@@ -178,15 +183,15 @@ async function handleRequest({ request, env }) {
     const errors = [];
     b.rows.forEach((row,index) => { if (!validGap(row)) errors.push({row:index+2,error:"Data wajib tidak lengkap atau format/nilai tidak valid."}); });
     if (errors.length) return reply({error:"Import dibatalkan. Perbaiki baris yang ditandai lalu unggah ulang.",details:errors},400);
-    const statements = b.rows.map(row => db.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(crypto.randomUUID(),row.title.trim(),row.domain.trim(),row.actual_condition.trim(),row.ideal_condition.trim(),Number(row.actual),Number(row.target),row.priority,row.owner.trim(),row.due,row.action.trim(),row.status,user.id));
+    const statements = b.rows.map(row => db.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,start_date,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(crypto.randomUUID(),row.title.trim(),row.domain.trim(),row.actual_condition.trim(),row.ideal_condition.trim(),Number(row.actual),Number(row.target),row.priority,row.owner.trim(),row.start_date,row.due,row.action.trim(),row.status,user.id));
     await db.batch(statements);
     await audit(db,user,"IMPORT","gap",null,{count:b.rows.length,filename:validText(b.filename,120)?b.filename:"uploaded-file"});
     return reply({message:"Import berhasil.",imported:b.rows.length},201);
   }
 
   if (path === "/api/gaps" && method === "GET") {
-    const {results} = await env.GAP_ANALYSIS_DB.prepare("SELECT id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
+    const {results} = await env.GAP_ANALYSIS_DB.prepare("SELECT id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,start_date,due,due AS finish_date,action,status,created_at,updated_at FROM gaps ORDER BY created_at DESC").all();
     return reply({data:results});
   }
   if (path === "/api/gaps" && method === "POST") {
@@ -195,7 +200,7 @@ async function handleRequest({ request, env }) {
     if (!validGap(b)) return reply({error:"Data assessment tidak lengkap atau tidak valid."},400);
     const id=crypto.randomUUID();
     await env.GAP_ANALYSIS_DB.prepare("INSERT INTO gaps (id,title,domain,actual_condition,ideal_condition,actual,target,priority,owner,due,action,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .bind(id,b.title.trim(),b.domain,b.actual_condition.trim(),b.ideal_condition.trim(),Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.due,b.action.trim(),b.status,user.id).run();
+      .bind(id,b.title.trim(),b.domain,b.actual_condition.trim(),b.ideal_condition.trim(),Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.start_date,b.due,b.action.trim(),b.status,user.id).run();
     await audit(env.GAP_ANALYSIS_DB,user,"CREATE","gap",id,{title:b.title,priority:b.priority});
     return reply({id,message:"Assessment disimpan."},201);
   }
@@ -213,8 +218,8 @@ async function handleRequest({ request, env }) {
     }
     const b=await body(request);
     if (!validGap(b)) return reply({error:"Data assessment tidak valid."},400);
-    await env.GAP_ANALYSIS_DB.prepare("UPDATE gaps SET title=?,domain=?,actual_condition=?,ideal_condition=?,actual=?,target=?,priority=?,owner=?,due=?,action=?,status=?,updated_at=datetime('now') WHERE id=?")
-      .bind(b.title.trim(),b.domain,b.actual_condition.trim(),b.ideal_condition.trim(),Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.due,b.action.trim(),b.status,id).run();
+    await env.GAP_ANALYSIS_DB.prepare("UPDATE gaps SET title=?,domain=?,actual_condition=?,ideal_condition=?,actual=?,target=?,priority=?,owner=?,start_date=?,due=?,action=?,status=?,updated_at=datetime('now') WHERE id=?")
+      .bind(b.title.trim(),b.domain,b.actual_condition.trim(),b.ideal_condition.trim(),Number(b.actual),Number(b.target),b.priority,b.owner.trim(),b.start_date,b.due,b.action.trim(),b.status,id).run();
     await audit(env.GAP_ANALYSIS_DB,user,"UPDATE","gap",id,{title:b.title,status:b.status});
     return reply({message:"Assessment diperbarui."});
   }
