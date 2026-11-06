@@ -240,8 +240,9 @@ async function handleRequest({ request, env }) {
     if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const id=userRoute[1];
     if (id===user.id) return reply({error:"Admin tidak dapat menonaktifkan akunnya sendiri."},400);
-    const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
+    const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id,is_super_admin FROM users WHERE id=?").bind(id).first();
     if (!target) return reply({error:"Pengguna tidak ditemukan."},404);
+    if (target.is_super_admin && user.role!=="Super Admin") return reply({error:"Hanya Super Admin yang dapat mengelola akun Super Admin."},403);
     if (method==="DELETE") {
       await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET active=0,updated_at=datetime('now') WHERE id=?").bind(id).run();
       await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
@@ -249,7 +250,8 @@ async function handleRequest({ request, env }) {
       return reply({message:"Pengguna dinonaktifkan."});
     }
     const b=await body(request);
-    if (!b || !ROLES.includes(b.role) || typeof b.active!=="boolean") return reply({error:"Role atau status pengguna tidak valid."},400);
+    const allowedRoles = user.role === "Super Admin" ? ROLES : USER_ROLES;
+    if (!b || !allowedRoles.includes(b.role) || typeof b.active!=="boolean") return reply({error:"Role atau status pengguna tidak valid atau tidak diizinkan."},400);
     await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET role=?,active=?,updated_at=datetime('now') WHERE id=?").bind(b.role,b.active?1:0,id).run();
     if (!b.active) await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
     await audit(env.GAP_ANALYSIS_DB,user,"UPDATE","user",id,{role:b.role,active:b.active});
