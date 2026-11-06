@@ -219,24 +219,25 @@ async function handleRequest({ request, env }) {
   }
 
   if (path === "/api/users" && method === "GET") {
-    if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
+    if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,display_name AS displayName,role,active,created_at AS createdAt FROM users ORDER BY created_at DESC").all();
     return reply({data:results});
   }
   if (path === "/api/users" && method === "POST") {
-    if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
+    if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const b=await body(request);
-    if (!b || !validText(b.username,60) || !validText(b.displayName,120) || typeof b.password!=="string" || b.password.length<12 || b.password.length>128 || !ROLES.includes(b.role))
-      return reply({error:"Isi username, nama, role, dan password minimal 12 karakter."},400);
+    const allowedRoles = user.role === "Super Admin" ? ROLES : USER_ROLES;
+    if (!b || !validText(b.username,60) || !validText(b.displayName,120) || typeof b.password!=="string" || b.password.length<12 || b.password.length>128 || !allowedRoles.includes(b.role))
+      return reply({error:user.role==="Super Admin"?"Data akun tidak valid.":"Administrator hanya dapat membuat akun User (Assessor/Viewer)."},400);
     const salt=randomToken(),id=crypto.randomUUID(),hash=await hashPassword(b.password,salt);
-    try { await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role) VALUES (?,?,?,?,?,?)").bind(id,b.username.trim(),b.displayName.trim(),hash,salt,b.role).run(); }
+    try { await env.GAP_ANALYSIS_DB.prepare("INSERT INTO users (id,username,display_name,password_hash,password_salt,role,is_super_admin) VALUES (?,?,?,?,?,?,0)").bind(id,b.username.trim(),b.displayName.trim(),hash,salt,b.role).run(); }
     catch { return reply({error:"Username sudah digunakan."},409); }
     await audit(env.GAP_ANALYSIS_DB,user,"CREATE","user",id,{username:b.username,role:b.role});
     return reply({id,message:"Pengguna dibuat."},201);
   }
   const userRoute=path.match(/^\/api\/users\/([a-f0-9-]+)$/i);
   if (userRoute && ["PATCH","DELETE"].includes(method)) {
-    if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
+    if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const id=userRoute[1];
     if (id===user.id) return reply({error:"Admin tidak dapat menonaktifkan akunnya sendiri."},400);
     const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
@@ -255,7 +256,7 @@ async function handleRequest({ request, env }) {
     return reply({message:"Hak akses diperbarui."});
   }
   if (path==="/api/audit" && method==="GET") {
-    if (user.role!=="Admin") return reply({error:"Akses khusus Admin."},403);
+    if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const {results}=await env.GAP_ANALYSIS_DB.prepare("SELECT id,username,action,entity,entity_id AS entityId,details,created_at AS createdAt FROM audit_logs ORDER BY id DESC LIMIT 300").all();
     return reply({data:results});
   }
