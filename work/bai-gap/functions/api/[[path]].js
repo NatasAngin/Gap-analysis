@@ -242,7 +242,7 @@ async function handleRequest({ request, env }) {
     await audit(env.GAP_ANALYSIS_DB,user,"CREATE","user",id,{username:b.username,role:b.role});
     return reply({id,message:"Pengguna dibuat."},201);
   }
-  const userRoute=path.match(/^\/api\/users\/([a-f0-9-]+)$/i);
+  const userRoute=path.match(/^\/api\/users\/([a-f0-9-]+)(\/reset-password)?$/i);
   if (userRoute && ["PATCH","DELETE","POST"].includes(method)) {
     if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const id=userRoute[1];
@@ -250,7 +250,7 @@ async function handleRequest({ request, env }) {
     const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id,is_super_admin,role FROM users WHERE id=?").bind(id).first();
     if (!target) return reply({error:"Pengguna tidak ditemukan."},404);
     if (target.is_super_admin && user.role!=="Super Admin") return reply({error:"Hanya Super Admin yang dapat mengelola akun Super Admin."},403);
-    if (method==="POST") {
+    if (method==="POST" && userRoute[2]==="/reset-password") {
       if (target.is_super_admin) return reply({error:"Password akun Super Admin tidak dapat direset melalui akun lain."},403);
       if (user.role==="Admin" && !["Assessor","Viewer"].includes(target.role)) return reply({error:"Administrator hanya dapat reset password akun User."},403);
       if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses ditolak."},403);
