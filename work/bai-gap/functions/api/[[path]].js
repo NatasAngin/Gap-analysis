@@ -243,13 +243,25 @@ async function handleRequest({ request, env }) {
     return reply({id,message:"Pengguna dibuat."},201);
   }
   const userRoute=path.match(/^\/api\/users\/([a-f0-9-]+)$/i);
-  if (userRoute && ["PATCH","DELETE"].includes(method)) {
+  if (userRoute && ["PATCH","DELETE","POST"].includes(method)) {
     if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses khusus Administrator."},403);
     const id=userRoute[1];
     if (id===user.id) return reply({error:"Admin tidak dapat menonaktifkan akunnya sendiri."},400);
-    const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id,is_super_admin FROM users WHERE id=?").bind(id).first();
+    const target=await env.GAP_ANALYSIS_DB.prepare("SELECT id,is_super_admin,role FROM users WHERE id=?").bind(id).first();
     if (!target) return reply({error:"Pengguna tidak ditemukan."},404);
     if (target.is_super_admin && user.role!=="Super Admin") return reply({error:"Hanya Super Admin yang dapat mengelola akun Super Admin."},403);
+    if (method==="POST") {
+      if (target.is_super_admin) return reply({error:"Password akun Super Admin tidak dapat direset melalui akun lain."},403);
+      if (user.role==="Admin" && !["Assessor","Viewer"].includes(target.role)) return reply({error:"Administrator hanya dapat reset password akun User."},403);
+      if (!["Admin","Super Admin"].includes(user.role)) return reply({error:"Akses ditolak."},403);
+      const b=await body(request);
+      if (!b || typeof b.password!=="string" || b.password.length<12 || b.password.length>128) return reply({error:"Password baru wajib 12–128 karakter."},400);
+      const salt=randomToken(),hash=await hashPassword(b.password,salt);
+      await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET password_hash=?,password_salt=?,updated_at=datetime('now') WHERE id=?").bind(hash,salt,id).run();
+      await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
+      await audit(env.GAP_ANALYSIS_DB,user,"RESET_PASSWORD","user",id,{targetRole:target.role});
+      return reply({message:"Password berhasil direset. Pengguna harus login kembali."});
+    }
     if (method==="DELETE") {
       await env.GAP_ANALYSIS_DB.prepare("UPDATE users SET active=0,updated_at=datetime('now') WHERE id=?").bind(id).run();
       await env.GAP_ANALYSIS_DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id).run();
