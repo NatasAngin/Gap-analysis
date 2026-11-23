@@ -164,3 +164,9 @@ dialog label,.user-dialog label{color:#b2c3e1}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
+
+/* Official BAI logo */
+.brand{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:4px 0 18px}
+.brand .brand-logo{display:block;width:116px;height:auto;max-width:100%;object-fit:contain;filter:drop-shadow(0 5px 15px rgba(0,0,0,.24));transition:transform .35s ease,filter .35s ease}
+.brand .brand-logo:hover{transform:scale(1.045);filter:drop-shadow(0 0 18px rgba(255,126,0,.24))}
+.brand>small{font-size:9px;letter-spacing:1.1px;color:#9aaccb}
